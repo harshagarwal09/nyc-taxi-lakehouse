@@ -15,6 +15,7 @@ def load_month(m):
         F.col("tpep_dropoff_datetime").cast("timestamp").alias("dropoff_ts"),
         F.col("passenger_count").cast("int").alias("passenger_count"),
         F.col("trip_distance").cast("double").alias("trip_distance"),
+        F.col("RatecodeID").cast("int").alias("ratecode"),
         F.col("PULocationID").cast("int").alias("pu_zone"),
         F.col("DOLocationID").cast("int").alias("do_zone"),
         F.col("payment_type").cast("int").alias("payment_type"),
@@ -29,12 +30,22 @@ def bad(cond):
     return F.coalesce(cond, F.lit(True))   # a NULL result counts as bad
 
 duration_min = (F.unix_timestamp("dropoff_ts") - F.unix_timestamp("pickup_ts")) / 60
+
+# Highest fare a meter could plausibly produce for this trip
+metered_ceiling = 25 + 7 * F.col("trip_distance") + 1.4 * duration_min
+
+# Flat/negotiated fares (rate code 2 = JFK flat, 5 = negotiated) don't depend on
+# distance, so they get a ceiling of at least $300 instead.
+flat_codes = F.col("ratecode").isin(2, 5)
+max_fare = F.when(flat_codes, F.greatest(metered_ceiling, F.lit(300.0))).otherwise(metered_ceiling)
+
 rules = {
-    "wrong_month":  bad(F.date_format("pickup_ts", "yyyy-MM") != F.col("file_month")),
-    "bad_duration": bad(~duration_min.between(1, 180)),
-    "bad_distance": bad(~F.col("trip_distance").between(0.1, 100)),
-    "bad_fare":     bad(F.col("fare_amount") <= 0),
-    "missing_zone": bad(F.col("pu_zone").isNull() | F.col("do_zone").isNull()),
+    "wrong_month":   bad(F.date_format("pickup_ts", "yyyy-MM") != F.col("file_month")),
+    "bad_duration":  bad(~duration_min.between(1, 180)),
+    "bad_distance":  bad(~F.col("trip_distance").between(0.1, 100)),
+    "fare_too_low":  bad(F.col("fare_amount") < 3.0),
+    "fare_too_high": bad(F.col("fare_amount") > max_fare),
+    "missing_zone":  bad(F.col("pu_zone").isNull() | F.col("do_zone").isNull()),
 }
 
 flagged = raw

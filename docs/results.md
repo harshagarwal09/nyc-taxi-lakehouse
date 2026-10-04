@@ -28,6 +28,29 @@ Update this after every stage. The README is built from it.
 - Removal rate by month: Jan 3.62%, Feb 3.94%, Mar 4.41%
 - Pickup range after cleaning: 2024-01-01 to 2024-03-31
 - Known gaps: max fare is $999.00 and min fare is $0.01, so a fare-per-mile rule would be a good silver v2
+
+### Silver v2 (fare rules added)
+- Found from exploring fares: official initial charge is $3.00, so fares under $3 are impossible. Round-number fares like $999 and $840 appeared on trips of 1 mile or less. The ~$6 to $7 per mile on 90+ mile trips matches the doubled out-of-city rate, so a plain "fare above X" cap would have deleted real trips.
+- New rules: fare_too_low (fare < $3.00) and fare_too_high (fare > 25 + 7 x miles + 1.4 x minutes)
+- Report: wrong_month 56, bad_duration 115,627, bad_distance 246,913, fare_too_low 155,132, fare_too_high 44,181, missing_zone 0
+- Rows kept: 9,150,502 (95.77%), removed 404,276 (4.23%). v1 kept 95.98%
+- Rules overlap heavily (counts sum to 561,909 but only 404,276 rows were removed)
+- Tips larger than the fare: 9,161 rows (0.10%), kept on purpose; gold uses sum(tips) / sum(fares) so they can't distort it
+
+### Silver v3 (flat-fare exemption)
+- Checked which rows fare_too_high removed on its own (5,830). 3,071 were rate code 2 (JFK) and 2,404 were rate code 5 (negotiated). 3,065 of the 3,130 trips with a fare of exactly $70.00 were rate code 2: the JFK flat fare. Their recorded distance is meaningless, so the distance-based fare ceiling was deleting real airport trips.
+- Fix: flat/negotiated rate codes (2 and 5) get a ceiling of max(metered ceiling, $300). Kept ratecode as a silver column.
+- Remaining removals by this rule: NULL rate code (294), code 99 (56), standard code 1 (5)
+- Known gap: the distance rules (bad_distance) may also remove some flat-fare trips whose recorded distance is wrong. Not measured yet.
+- Lesson: look at examples of what a rule removes, not just how many.
+
+- Final silver report: wrong_month 56, bad_duration 115,627, bad_distance 246,913, fare_too_low 155,132, fare_too_high 2,424, missing_zone 0
+- Rows kept: 9,155,947 (95.83%), removed 398,831 (4.17%)
+- Version history: v1 95.98% kept, v2 95.77% (new fare rules), v3 95.83% (flat-fare exemption restored 5,445 rows)
+- Known gap: about 36,000 flat-fare (code 2 and 5) trips fail the distance or duration rules, because a flat fare doesn't depend on distance. Some may be valid airport trips with a bad distance field. Airport counts in gold are slightly low. Not measured yet.
+- Verified from disk: Jan 2,855,678 / Feb 2,885,773 / Mar 3,414,496 = 9,155,947. Fare range $3.00 to $661.70, distance 0.1 to 99.77 miles, pickups 2024-01-01 to 2024-03-31
+- Removal rate by month (bronze to silver): Jan 3.67%, Feb 4.05%, Mar 4.69%. Cause of the rise not investigated yet
+
 ## Gold
 (fill in after Stage 3)
 
